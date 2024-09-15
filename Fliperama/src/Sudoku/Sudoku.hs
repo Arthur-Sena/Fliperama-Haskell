@@ -1,8 +1,9 @@
 module Sudoku.Sudoku where
 
-import Sudoku.Validacao (validarJogada)
+import Sudoku.Validacao (validarJogada, validarEntradaSudoku)
 import Tipos 
 import System.Random (randomRIO)
+import Control.Monad.Trans.State (State, StateT, get, put)
 
 geradorTabuleiroVazio :: Sudoku
 geradorTabuleiroVazio = replicate 9 (replicate 9 0)
@@ -81,24 +82,29 @@ preenchendoTabuleiro sudoku = preenche' sudoku (0, 0)
                 Nothing -> acc
             | otherwise = acc
 
-buscaPosicaoVazia :: Sudoku -> Maybe Coord
-buscaPosicaoVazia sudoku = findIndex' sudoku 0 0
-  where
-    findIndex' [] _ _ = Nothing
-    findIndex' (x:xs) line col
-      | col >= 9 = findIndex' xs (line + 1) 0
-      | (x !! col) == 0 = Just (line, col)
-      | otherwise = findIndex' (x:xs) line (col + 1)
-
-jogadaComputador :: Sudoku -> IO Sudoku
-jogadaComputador sudoku = do
-    let Just (line, col) = buscaPosicaoVazia sudoku
-    let numValido = [n | n <- [1..9], validarJogada sudoku n (line, col)]
-    let num = head numValido -- Pega o primeiro número válido
-    return $ salvarJogada sudoku (line, col, num)
-
 solucionarSudoku :: Sudoku -> IO (Maybe Sudoku)
 solucionarSudoku sudoku = do
     case preenchendoTabuleiro sudoku of
         Just (SudokuBoard tabuleiro) -> return (Just tabuleiro)
         Nothing -> return Nothing
+
+posicoesVazias :: Sudoku -> [(Int, Int)]
+posicoesVazias tab = [(x, y) | x <- [0..8], y <- [0..8], tab !! x !! y == 0]
+
+findJogadaValida :: Sudoku -> Maybe (Int, Int, Int)
+findJogadaValida sudoku = 
+    let vazias = posicoesVazias sudoku
+        numeros = [1..9]
+        jogadasValidas = [(x + 1, y + 1, v) | (x, y) <- vazias, v <- numeros, validarEntradaSudoku sudoku (x + 1, y + 1, v)]
+    in case jogadasValidas of
+        []       -> Nothing      
+        (j:_)    -> Just j       
+
+sugerirJogada :: Sudoku -> Maybe (Int, Int, Int)
+sugerirJogada sudoku = findJogadaValida sudoku 
+
+sugerirJogadaState :: StateT GameState IO ()
+sugerirJogadaState = do
+    GameState sudoku _ <- get
+    let novaSugestao = sugerirJogada sudoku
+    put (GameState sudoku novaSugestao)

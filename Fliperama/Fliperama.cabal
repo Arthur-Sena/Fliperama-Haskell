@@ -23,6 +23,8 @@ executable Fliperama
                       , random
                       , containers
                       , QuickCheck >=2.14
+                      , mtl >= 2.2 && < 3.0
+                      , transformers >= 0.5 && < 0.7
   ghc-options:         -Wall
                        -Wcompat
                        -Widentities
@@ -54,4 +56,6 @@ test-suite fliperama-test
                       , random
                       , containers
                       , QuickCheck
+                      , mtl >= 2.2 && < 3.0
+                      , transformers >= 0.5 && < 0.7
   default-language:    Haskell2010

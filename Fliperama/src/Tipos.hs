@@ -1,5 +1,6 @@
 module Tipos where
 
+import Control.Monad.State
 
 type Tabuleiro = [[Char]] --Tabuleiro Jogo Da Velha
 type Sudoku = [[Int]]
@@ -25,3 +26,12 @@ instance Monoid SudokuBoard where
 
 joinTabuleiro :: Sudoku -> Sudoku -> Sudoku
 joinTabuleiro b1 b2 = [[if x == 0 then y else x | (x, y) <- zip line1 line2] | (line1, line2) <- zip b1 b2]
+
+
+type Game a = StateT GameState IO a
+
+data GameState = GameState
+    { 
+        tabuleiro :: Sudoku 
+        , jogadaSugerida :: Maybe (Int, Int, Int)
+    }

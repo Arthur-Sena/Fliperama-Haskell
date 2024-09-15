@@ -3,6 +3,8 @@ module Sudoku.Main where
 import Tipos 
 import Sudoku.Sudoku 
 import Sudoku.Validacao (validEntrada, validTabuleiroCompleto)
+import Control.Monad.Trans.State (State, StateT, evalStateT, get, put)
+import Control.Monad.IO.Class (liftIO)
 
 {--
     Nível de Díficuldade: o nível de dificuldade varia
@@ -47,48 +49,50 @@ sudokuMock = [[0,0,0,0,0,0,0,0,0], --1
 
 startSudoku :: Int -> IO ()
 startSudoku qntCasasPreenchidasInicialmente = do
-    tabuleiro <- sudokuGenerator qntCasasPreenchidasInicialmente
-    sudokuLoop tabuleiro
-    --    sudokuLoop sudokuMock
+    tabuleiroInicial <- sudokuGenerator qntCasasPreenchidasInicialmente
+    evalStateT sudokuLoop (GameState tabuleiroInicial Nothing)
+    --evalStateT sudokuLoop (GameState sudokuMock)
 
-sudokuLoop :: Sudoku -> IO ()
-sudokuLoop tabuleiro = do
-    showTabuleiro tabuleiro
-    if validTabuleiroCompleto tabuleiro
-        then putStrLn "Parabéns! Você resolveu o Sudoku!"
+sudokuLoop :: Game ()
+sudokuLoop = do
+    gameState <- get
+    let tabuleiroAtual = tabuleiro gameState
+    let jogadaAtual = jogadaSugerida gameState
+
+    liftIO $ showTabuleiro tabuleiroAtual
+
+    if validTabuleiroCompleto tabuleiroAtual
+        then liftIO $ putStrLn "Parabéns! Você resolveu o Sudoku!"
         else do
-            putStrLn " "
-            putStrLn "Digite sua jogada no formato (linha coluna número)"
-            putStrLn "Dica: digite 0 0 0 para que o computador faça um jogada"
-            putStrLn ", 0 0 1 para sair ou 10 0 0 para revelar a solução:"
-            jogada <- getLine
+            liftIO $ do
+                putStrLn " "
+                putStrLn "Digite sua jogada no formato (linha coluna número)"
+                putStrLn "Dica: digite 0 0 0 para uma sugestão de jogada válida."
+                putStrLn ", 0 0 1 para sair ou 10 0 0 para revelar a solução:"
+                maybe (return ()) (\(x, y, v) -> putStrLn $ "Sugestão: (" ++ show x ++ ", " ++ show y ++ ", " ++ show v ++ ")") jogadaAtual
+
+            jogada <- liftIO getLine
             let (x:y:v:_) = map read (words jogada)
-            if x == 0 && y == 0 && v == 0
-                then do
-                    putStrLn "Computador fazendo uma jogada..."
-                    newSudoku <- jogadaComputador tabuleiro
-                    sudokuLoop newSudoku
-                else if x == 0 && y == 0 && v == 1
-                    then putStrLn "Jogo encerrado."
-                    else if x == 10
+
+            if x == 0 && y == 0 && v == 1
+                then liftIO $ putStrLn "Jogo encerrado."
+                else if x == 10
+                    then do
+                        liftIO $ putStrLn "Revelando solução..."
+                        resolucao <- liftIO $ solucionarSudoku tabuleiroAtual
+                        case resolucao of
+                            Just filledBoard -> liftIO $ showTabuleiro filledBoard
+                            Nothing -> liftIO $ putStrLn "Não foi possível revelar a solução."
+                        liftIO mainMenu
+                    else if x == 0 && y == 0 && v == 0
                         then do
-                            putStrLn "Revelando solução..."
-                            resolucao <- solucionarSudoku tabuleiro
-                            case resolucao of
-                                Just filledBoard -> showTabuleiro filledBoard
-                                Nothing -> putStrLn "Não foi possível revelar a solução."
-                            mainMenu
+                            sugerirJogadaState
+                            sudokuLoop
                         else do
-                            valid <- validEntrada tabuleiro (x, y, v)
+                            valid <- liftIO $ validEntrada tabuleiroAtual (x, y, v)
                             if valid
                                 then do
-                                    let newSudoku = salvarJogada tabuleiro (x-1, y-1, v)
-                                    sudokuLoop newSudoku
-                                else sudokuLoop tabuleiro
-
---main :: IO ()
---main = do
---    putStrLn "Bem-vindo ao Sudoku!" 
---    mainMenu
-
---Melhoria: Limitar o número de ajuda (Quando o pc joga muito acaba chegando num ponto q nao tem solução)
+                                    let newSudoku = salvarJogada tabuleiroAtual (x-1, y-1, v)
+                                    put (gameState { tabuleiro = newSudoku, jogadaSugerida = Nothing })
+                                    sudokuLoop
+                                else sudokuLoop
