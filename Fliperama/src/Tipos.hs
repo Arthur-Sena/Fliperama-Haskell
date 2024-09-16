@@ -1,6 +1,7 @@
 module Tipos where
 
 import Control.Monad.State
+import Data.Time.Clock (getCurrentTime, diffUTCTime, UTCTime, NominalDiffTime)
 
 type Tabuleiro = [[Char]] --Tabuleiro Jogo Da Velha
 type Sudoku = [[Int]]
@@ -34,4 +35,6 @@ data GameState = GameState
     { 
         tabuleiro :: Sudoku 
         , jogadaSugerida :: Maybe (Int, Int, Int)
+        , tempoRestante :: NominalDiffTime
+        , tempoInicial :: UTCTime 
     }

@@ -25,6 +25,7 @@ executable Fliperama
                       , QuickCheck >=2.14
                       , mtl >= 2.2 && < 3.0
                       , transformers >= 0.5 && < 0.7
+                      , time
   ghc-options:         -Wall
                        -Wcompat
                        -Widentities
@@ -58,4 +59,5 @@ test-suite fliperama-test
                       , QuickCheck
                       , mtl >= 2.2 && < 3.0
                       , transformers >= 0.5 && < 0.7
+                      , time
   default-language:    Haskell2010

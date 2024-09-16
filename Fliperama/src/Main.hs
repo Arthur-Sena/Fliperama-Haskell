@@ -12,12 +12,15 @@ menu = do
   putStrLn "3 - Sair "
   option <- getLine
   case option of
-      "1" -> menuInicial -- Menu Inicial do Jogo da Velha
-      "2" -> mainMenu -- Menu Inicial do Sudoku
+      "1" -> do
+        menuInicial -- Menu Inicial do Jogo da Velha
+        menu 
+      "2" -> do 
+        mainMenu -- Menu Inicial do Sudoku
+        menu 
       "3" -> putStrLn "..." 
       _   -> do
           putStrLn "Opção inválida. Tente novamente."
-          menu 
 
 main :: IO ()
 main = do

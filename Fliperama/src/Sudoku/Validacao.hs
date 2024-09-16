@@ -1,6 +1,4 @@
 module Sudoku.Validacao where
-import System.Random (randomRIO)
-
 import Tipos 
 
 {-- *****************************************************
@@ -69,5 +67,9 @@ validarJogada tabuleiro num (linha, col) =
     boxLinhas = [boxInicio linha .. boxInicio linha + 2]
     boxColunas = [boxInicio col .. boxInicio col + 2]
 
-validTabuleiroCompleto :: Sudoku -> Bool
-validTabuleiroCompleto sudoku = all (/= 0) (concat sudoku)
+--validTabuleiroCompleto :: Sudoku -> Bool
+--validTabuleiroCompleto sudoku = all (/= 0) (concat sudoku)
+
+-- Melhorando a função validTabuleiroCompleto usando Applicative
+validTabuleiroCompleto :: [[Int]] -> Bool
+validTabuleiroCompleto = and . concatMap (fmap (/= 0))

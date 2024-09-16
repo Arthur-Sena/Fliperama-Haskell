@@ -1,9 +1,11 @@
 module Sudoku.Sudoku where
 
 import Sudoku.Validacao (validarJogada, validarEntradaSudoku)
-import Tipos 
+import Tipos
 import System.Random (randomRIO)
 import Control.Monad.Trans.State (State, StateT, get, put)
+import Data.Time.Clock (getCurrentTime, diffUTCTime, UTCTime, NominalDiffTime)
+import Control.Monad.IO.Class (liftIO)
 
 geradorTabuleiroVazio :: Sudoku
 geradorTabuleiroVazio = replicate 9 (replicate 9 0)
@@ -21,18 +23,18 @@ sudokuGenerator qntCasasPreenchidas = do
             then limpaPosicao tabuleiro n
             else limpaPosicao (copySudokuEspacoSemValor tabuleiro linha col 0) (n - 1)
     copySudokuEspacoSemValor tabuleiro linha col val =
-        take linha tabuleiro ++ 
-        [take col (tabuleiro !! linha) 
-        ++ [val] 
+        take linha tabuleiro ++
+        [take col (tabuleiro !! linha)
+        ++ [val]
         ++ drop (col + 1) (tabuleiro !! linha)
         ] ++ drop (linha + 1) tabuleiro
 
 salvarJogada :: Sudoku -> Jogada -> Sudoku
 salvarJogada tabuleiro (line, col, val) =
-    take line tabuleiro 
+    take line tabuleiro
     ++ [
-        take col (tabuleiro !! line) 
-        ++ [val] 
+        take col (tabuleiro !! line)
+        ++ [val]
         ++ drop (col + 1) (tabuleiro !! line)
         ] ++ drop (line + 1) tabuleiro
 
@@ -92,19 +94,32 @@ posicoesVazias :: Sudoku -> [(Int, Int)]
 posicoesVazias tab = [(x, y) | x <- [0..8], y <- [0..8], tab !! x !! y == 0]
 
 findJogadaValida :: Sudoku -> Maybe (Int, Int, Int)
-findJogadaValida sudoku = 
+findJogadaValida sudoku =
     let vazias = posicoesVazias sudoku
         numeros = [1..9]
         jogadasValidas = [(x + 1, y + 1, v) | (x, y) <- vazias, v <- numeros, validarEntradaSudoku sudoku (x + 1, y + 1, v)]
     in case jogadasValidas of
-        []       -> Nothing      
-        (j:_)    -> Just j       
+        []       -> Nothing
+        (j:_)    -> Just j
 
 sugerirJogada :: Sudoku -> Maybe (Int, Int, Int)
-sugerirJogada sudoku = findJogadaValida sudoku 
+sugerirJogada = findJogadaValida --eta reduce
 
 sugerirJogadaState :: StateT GameState IO ()
 sugerirJogadaState = do
-    GameState sudoku _ <- get
-    let novaSugestao = sugerirJogada sudoku
-    put (GameState sudoku novaSugestao)
+    GameState sudokuAtual _ tempoRestante tempoInicial <- get
+    let novaSugestao = sugerirJogada sudokuAtual
+    put (GameState sudokuAtual novaSugestao tempoRestante tempoInicial)
+
+atualizarTempo :: StateT GameState IO ()
+atualizarTempo = do
+    now <- liftIO getCurrentTime
+    GameState sudokuAtual sugestao  tempoRestante inicio <- get
+    let tempoDecorriso = diffUTCTime now inicio
+    let novoTempo = tempoRestante - tempoDecorriso
+    put (GameState sudokuAtual sugestao novoTempo now)
+
+verificarTempoLimite :: StateT GameState IO Bool
+verificarTempoLimite = do
+    GameState _ _ tempoRestante _ <- get
+    return (tempoRestante <= 0)
