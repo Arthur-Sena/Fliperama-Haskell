@@ -6,6 +6,7 @@ import System.Random (randomRIO)
 import Control.Monad.Trans.State (State, StateT, get, put)
 import Data.Time.Clock (getCurrentTime, diffUTCTime, UTCTime, NominalDiffTime)
 import Control.Monad.IO.Class (liftIO)
+import Tipos (Jogada, Coord)
 
 geradorTabuleiroVazio :: Sudoku
 geradorTabuleiroVazio = replicate 9 (replicate 9 0)
@@ -38,11 +39,13 @@ salvarJogada tabuleiro (line, col, val) =
         ++ drop (col + 1) (tabuleiro !! line)
         ] ++ drop (line + 1) tabuleiro
 
-showTabuleiro :: Sudoku -> IO ()
-showTabuleiro tabuleiro = do
-    putStrLn "    1 2 3 | 4 5 6 | 7 8 9"
-    putStrLn "   -----------------------"
-    mapM_ putStrLn $ formatarSudoku 1 tabuleiro
+showTabuleiro :: StateT GameState IO ()
+showTabuleiro = do
+    GameState tabuleiro _ _ _ <- get  -- Pega o tabuleiro atual do estado
+    liftIO $ do
+        putStrLn "    1 2 3 | 4 5 6 | 7 8 9"
+        putStrLn "   -----------------------"
+        mapM_ putStrLn $ formatarSudoku 1 tabuleiro
   where
     formatarSudoku _ [] = []
     formatarSudoku n (x:xs) =
@@ -72,10 +75,10 @@ preencheTabuleiro tabuleiro = preencheTabuleiro' tabuleiro (0, 0)
 preenchendoTabuleiro :: Sudoku -> Maybe SudokuBoard
 preenchendoTabuleiro sudoku = preenche' sudoku (0, 0)
   where
-    preenche' b (9, _) = Just (SudokuBoard b) -- Se chegar na última linha, retorna tabuleiro
-    preenche' b (line, 9) = preenche' b (line + 1, 0) -- Avança pra próxima linha
+    preenche' b (9, _) = Just (SudokuBoard b) 
+    preenche' b (line, 9) = preenche' b (line + 1, 0) 
     preenche' b (line, col)
-        | b !! line !! col /= 0 = preenche' b (line, col + 1) -- Se a célula já estiver preenchida, avança
+        | b !! line !! col /= 0 = preenche' b (line, col + 1) 
         | otherwise = foldr tryMove Nothing [1..9]
       where
         tryMove n acc
@@ -84,16 +87,18 @@ preenchendoTabuleiro sudoku = preenche' sudoku (0, 0)
                 Nothing -> acc
             | otherwise = acc
 
-solucionarSudoku :: Sudoku -> IO (Maybe Sudoku)
-solucionarSudoku sudoku = do
-    case preenchendoTabuleiro sudoku of
-        Just (SudokuBoard tabuleiro) -> return (Just tabuleiro)
+solucionarSudoku :: StateT GameState IO (Maybe Sudoku)
+solucionarSudoku = do
+    GameState tabuleiro _ _ _ <- get
+    case preenchendoTabuleiro tabuleiro of
+        Just (SudokuBoard tabuleiroSolucionado) -> return (Just tabuleiroSolucionado)
         Nothing -> return Nothing
 
-posicoesVazias :: Sudoku -> [(Int, Int)]
+
+posicoesVazias :: Sudoku -> [Coord]
 posicoesVazias tab = [(x, y) | x <- [0..8], y <- [0..8], tab !! x !! y == 0]
 
-findJogadaValida :: Sudoku -> Maybe (Int, Int, Int)
+findJogadaValida :: Sudoku -> Maybe Jogada
 findJogadaValida sudoku =
     let vazias = posicoesVazias sudoku
         numeros = [1..9]
@@ -102,7 +107,7 @@ findJogadaValida sudoku =
         []       -> Nothing
         (j:_)    -> Just j
 
-sugerirJogada :: Sudoku -> Maybe (Int, Int, Int)
+sugerirJogada :: Sudoku -> Maybe Jogada
 sugerirJogada = findJogadaValida --eta reduce
 
 sugerirJogadaState :: StateT GameState IO ()

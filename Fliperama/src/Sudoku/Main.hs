@@ -6,7 +6,7 @@ import Sudoku.Validacao (validEntrada, validTabuleiroCompleto)
 import Control.Monad.Trans.State (State, StateT, evalStateT, get, put)
 import Control.Monad.IO.Class (liftIO)
 import Data.Time.Clock (getCurrentTime, diffUTCTime, UTCTime, NominalDiffTime)
-import Tipos (GameState(tempoInicial), Historico)
+import Tipos (GameState(tempoInicial, jogadaSugerida), Historico)
 import Data.Time (NominalDiffTime)
 
 {--
@@ -49,7 +49,6 @@ sudokuMock = [[0,0,0,0,0,0,0,0,0], --1
               [0,0,0,0,0,0,0,0,0]] --9
             -- 1 2 3 4 5 6 7 8 9
 
-
 startSudoku :: Int -> NominalDiffTime -> IO ()
 startSudoku qntCasasPreenchidasInicialmente tempoLimite = do
     tabuleiroInicial <- sudokuGenerator qntCasasPreenchidasInicialmente
@@ -58,33 +57,34 @@ startSudoku qntCasasPreenchidasInicialmente tempoLimite = do
 
 sudokuLoop :: Historico -> StateT GameState IO ()
 sudokuLoop history = do
+    GameState tabuleiroAtual jogadaSugerida tempoLimite tempoInicial <- get
     atualizarTempo
     tempoAcabou <- verificarTempoLimite
     if tempoAcabou
         then tempoEsgotado
         else do
-            GameState tabuleiroAtual jogadaAtual tempoLimite tempoInicial <- get
-            liftIO $ showTabuleiro tabuleiroAtual
+            showTabuleiro 
             if validTabuleiroCompleto tabuleiroAtual
                 then liftIO $ putStrLn "Parabéns! Você resolveu o Sudoku!"
-                else processarEntrada jogadaAtual history tabuleiroAtual tempoLimite tempoInicial
+                else processarEntrada jogadaSugerida history
 
+--------------------- FUNÇÕES AUXILIARES DO MENU ---------------------
 tempoEsgotado :: StateT GameState IO ()
 tempoEsgotado = liftIO $ do
     putStrLn "Tempo esgotado! O jogo terminou."
     mainMenu
 
-processarEntrada :: Maybe Jogada -> Historico -> Sudoku -> NominalDiffTime -> UTCTime -> StateT GameState IO ()
-processarEntrada jogadaAtual history tabuleiroAtual tempoLimite tempoInicial = do
+processarEntrada :: Maybe Jogada -> Historico -> StateT GameState IO ()
+processarEntrada jogadaAtual history = do
     liftIO $ exibirMensagens jogadaAtual
     jogada <- liftIO getLine
     let (x:y:v:_) = map read (words jogada)
     case (x, y, v) of
         (0, 0, 1) -> encerrarJogo
-        (10, _, _) -> revelarSolucao tabuleiroAtual
+        (10, _, _) -> revelarSolucao
         (0, 0, 0) -> sugerirJogadaState >> sudokuLoop history
-        (9, 0, 0) -> desfazerJogadaState history tabuleiroAtual tempoLimite tempoInicial
-        _ -> processarJogada (x, y, v) history tabuleiroAtual tempoLimite tempoInicial
+        (9, 0, 0) -> desfazerJogadaState history
+        _ -> processarJogada (x, y, v) history
 
 exibirMensagens :: Maybe Jogada -> IO ()
 exibirMensagens jogadaAtual = do
@@ -100,24 +100,28 @@ encerrarJogo = liftIO $ do
     putStrLn "Jogo encerrado."
     mainMenu
 
-revelarSolucao :: Sudoku -> StateT GameState IO ()
-revelarSolucao tabuleiroAtual = do
+revelarSolucao :: StateT GameState IO ()
+revelarSolucao = do
+    GameState tabuleiroAtual jogadaSugerida tLimite tInicial <- get
     liftIO $ putStrLn "Revelando solução..."
-    resolucao <- liftIO $ solucionarSudoku tabuleiroAtual
+    resolucao <- solucionarSudoku
     case resolucao of
-        Just filledBoard -> liftIO $ showTabuleiro filledBoard
+        Just tabuleiroCompleto -> put (GameState tabuleiroCompleto jogadaSugerida tLimite tInicial)  
         Nothing -> liftIO $ putStrLn "Não foi possível revelar a solução."
+    showTabuleiro 
     liftIO mainMenu
 
-desfazerJogadaState :: Historico -> Sudoku -> NominalDiffTime -> UTCTime -> StateT GameState IO ()
-desfazerJogadaState history tabuleiroAtual tempoLimite tempoInicial = do
+desfazerJogadaState :: Historico -> StateT GameState IO ()
+desfazerJogadaState history = do
+    GameState tabuleiroAtual _ tempoLimite tempoInicial <- get
     let newSudoku = desfazerJogada tabuleiroAtual history
     let newHistory = Historico (init (unHistorico history))
     put (GameState newSudoku Nothing tempoLimite tempoInicial)
     sudokuLoop newHistory
 
-processarJogada :: (Int, Int, Int) -> Historico -> Sudoku -> NominalDiffTime -> UTCTime -> StateT GameState IO ()
-processarJogada (x, y, v) history tabuleiroAtual tempoLimite tempoInicial = do
+processarJogada :: Jogada -> Historico -> StateT GameState IO ()
+processarJogada (x, y, v) history = do
+    GameState tabuleiroAtual _ tempoLimite tempoInicial <- get
     valid <- liftIO $ validEntrada tabuleiroAtual (x, y, v)
     if valid
         then do
