@@ -71,5 +71,5 @@ validarJogada tabuleiro num (linha, col) =
 --validTabuleiroCompleto sudoku = all (/= 0) (concat sudoku)
 
 -- Melhorando a função validTabuleiroCompleto usando Applicative
-validTabuleiroCompleto :: [[Int]] -> Bool
+validTabuleiroCompleto :: Sudoku -> Bool
 validTabuleiroCompleto = and . concatMap (fmap (/= 0))

@@ -123,3 +123,15 @@ verificarTempoLimite :: StateT GameState IO Bool
 verificarTempoLimite = do
     GameState _ _ tempoRestante _ <- get
     return (tempoRestante <= 0)
+
+desfazerJogada :: Sudoku -> Historico -> Sudoku
+desfazerJogada tabuleiro (Historico []) = tabuleiro
+desfazerJogada tabuleiro (Historico ((x, y, _):hs)) =
+    let novoTabuleiro = salvarJogada tabuleiro (x, y, 0)
+    in novoTabuleiro
+
+adicionarJogadaHistorico :: Jogada -> Historico -> Historico
+adicionarJogadaHistorico jogada (Historico hs) = Historico (jogada : hs)
+
+unHistorico :: Historico -> [Jogada]
+unHistorico (Historico hs) = hs

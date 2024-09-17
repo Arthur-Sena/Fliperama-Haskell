@@ -6,7 +6,7 @@ import Sudoku.Validacao (validEntrada, validTabuleiroCompleto)
 import Control.Monad.Trans.State (State, StateT, evalStateT, get, put)
 import Control.Monad.IO.Class (liftIO)
 import Data.Time.Clock (getCurrentTime, diffUTCTime, UTCTime, NominalDiffTime)
-import Tipos (GameState(tempoInicial))
+import Tipos (GameState(tempoInicial), Historico)
 import Data.Time (NominalDiffTime)
 
 {--
@@ -54,51 +54,75 @@ startSudoku :: Int -> NominalDiffTime -> IO ()
 startSudoku qntCasasPreenchidasInicialmente tempoLimite = do
     tabuleiroInicial <- sudokuGenerator qntCasasPreenchidasInicialmente
     now <- getCurrentTime
-    evalStateT sudokuLoop (GameState tabuleiroInicial Nothing tempoLimite now)
+    evalStateT (sudokuLoop mempty) (GameState tabuleiroInicial Nothing tempoLimite now)
 
-sudokuLoop :: StateT GameState IO ()
-sudokuLoop = do
+sudokuLoop :: Historico -> StateT GameState IO ()
+sudokuLoop history = do
     atualizarTempo
     tempoAcabou <- verificarTempoLimite
     if tempoAcabou
-        then liftIO $ do
-                putStrLn "Tempo esgotado! O jogo terminou."
-                mainMenu
+        then tempoEsgotado
         else do
             GameState tabuleiroAtual jogadaAtual tempoLimite tempoInicial <- get
             liftIO $ showTabuleiro tabuleiroAtual
             if validTabuleiroCompleto tabuleiroAtual
                 then liftIO $ putStrLn "Parabéns! Você resolveu o Sudoku!"
-                else do
-                    liftIO $ do
-                        putStrLn " "
-                        putStrLn "Digite sua jogada no formato (linha coluna número)"
-                        putStrLn "Dica: digite 0 0 0 para uma sugestão de jogada válida."
-                        putStrLn ", 0 0 1 para sair ou 10 0 0 para revelar a solução:"
-                        maybe (return ()) (\(x, y, v) -> putStrLn $ "Sugestão: (" ++ show x ++ ", " ++ show y ++ ", " ++ show v ++ ")") jogadaAtual
+                else processarEntrada jogadaAtual history tabuleiroAtual tempoLimite tempoInicial
 
-                    jogada <- liftIO getLine
-                    let (x:y:v:_) = map read (words jogada)
+tempoEsgotado :: StateT GameState IO ()
+tempoEsgotado = liftIO $ do
+    putStrLn "Tempo esgotado! O jogo terminou."
+    mainMenu
 
-                    if x == 0 && y == 0 && v == 1
-                        then liftIO $ putStrLn "Jogo encerrado."
-                        else if x == 10
-                            then do
-                                liftIO $ putStrLn "Revelando solução..."
-                                resolucao <- liftIO $ solucionarSudoku tabuleiroAtual
-                                case resolucao of
-                                    Just filledBoard -> liftIO $ showTabuleiro filledBoard
-                                    Nothing -> liftIO $ putStrLn "Não foi possível revelar a solução."
-                                liftIO mainMenu
-                            else if x == 0 && y == 0 && v == 0
-                                then do
-                                    sugerirJogadaState
-                                    sudokuLoop
-                                else do
-                                    valid <- liftIO $ validEntrada tabuleiroAtual (x, y, v)
-                                    if valid
-                                        then do
-                                            let newSudoku = salvarJogada tabuleiroAtual (x-1, y-1, v)
-                                            put (GameState newSudoku Nothing tempoLimite tempoInicial)
-                                            sudokuLoop
-                                        else sudokuLoop
+processarEntrada :: Maybe Jogada -> Historico -> Sudoku -> NominalDiffTime -> UTCTime -> StateT GameState IO ()
+processarEntrada jogadaAtual history tabuleiroAtual tempoLimite tempoInicial = do
+    liftIO $ exibirMensagens jogadaAtual
+    jogada <- liftIO getLine
+    let (x:y:v:_) = map read (words jogada)
+    case (x, y, v) of
+        (0, 0, 1) -> encerrarJogo
+        (10, _, _) -> revelarSolucao tabuleiroAtual
+        (0, 0, 0) -> sugerirJogadaState >> sudokuLoop history
+        (9, 0, 0) -> desfazerJogadaState history tabuleiroAtual tempoLimite tempoInicial
+        _ -> processarJogada (x, y, v) history tabuleiroAtual tempoLimite tempoInicial
+
+exibirMensagens :: Maybe Jogada -> IO ()
+exibirMensagens jogadaAtual = do
+    putStrLn " "
+    putStrLn "Digite sua jogada no formato (linha coluna número)"
+    putStrLn "Dica: digite 0 0 0 para uma sugestão de jogada válida"
+    putStrLn ", 0 0 1 para sair, 9 0 0 para desfazer a última jogada ou"
+    putStrLn " 10 0 0 para revelar a solução:"
+    maybe (return ()) (\(x, y, v) -> putStrLn $ "Sugestão: (" ++ show x ++ ", " ++ show y ++ ", " ++ show v ++ ")") jogadaAtual
+
+encerrarJogo :: StateT GameState IO ()
+encerrarJogo = liftIO $ do
+    putStrLn "Jogo encerrado."
+    mainMenu
+
+revelarSolucao :: Sudoku -> StateT GameState IO ()
+revelarSolucao tabuleiroAtual = do
+    liftIO $ putStrLn "Revelando solução..."
+    resolucao <- liftIO $ solucionarSudoku tabuleiroAtual
+    case resolucao of
+        Just filledBoard -> liftIO $ showTabuleiro filledBoard
+        Nothing -> liftIO $ putStrLn "Não foi possível revelar a solução."
+    liftIO mainMenu
+
+desfazerJogadaState :: Historico -> Sudoku -> NominalDiffTime -> UTCTime -> StateT GameState IO ()
+desfazerJogadaState history tabuleiroAtual tempoLimite tempoInicial = do
+    let newSudoku = desfazerJogada tabuleiroAtual history
+    let newHistory = Historico (init (unHistorico history))
+    put (GameState newSudoku Nothing tempoLimite tempoInicial)
+    sudokuLoop newHistory
+
+processarJogada :: (Int, Int, Int) -> Historico -> Sudoku -> NominalDiffTime -> UTCTime -> StateT GameState IO ()
+processarJogada (x, y, v) history tabuleiroAtual tempoLimite tempoInicial = do
+    valid <- liftIO $ validEntrada tabuleiroAtual (x, y, v)
+    if valid
+        then do
+            let newSudoku = salvarJogada tabuleiroAtual (x-1, y-1, v)
+            let newHistory = adicionarJogadaHistorico (x-1, y-1, v) history
+            put (GameState newSudoku Nothing tempoLimite tempoInicial)
+            sudokuLoop newHistory
+        else sudokuLoop history

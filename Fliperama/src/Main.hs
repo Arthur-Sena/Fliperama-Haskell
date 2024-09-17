@@ -1,28 +1,36 @@
 module Main (main) where
 
-import Sudoku.Main (mainMenu)
 import JogoDaVelha.Main (menuInicial)
+import Sudoku.Main (mainMenu)
+import Tipos 
 
-menu :: IO ()
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Cont
+
+--callCC (call-with-current-continuation)
+menu :: Menu ()
 menu = do
-  putStrLn " "
-  putStrLn "Escolha o número do jogo: "
-  putStrLn "1 - Jogo da Velha"
-  putStrLn "2 - Sudoku "
-  putStrLn "3 - Sair "
-  option <- getLine
+  liftIO $ putStrLn " "
+  liftIO $ putStrLn "Escolha o número do jogo: "
+  liftIO $ putStrLn "1 - Jogo da Velha"
+  liftIO $ putStrLn "2 - Sudoku"
+  liftIO $ putStrLn "3 - Sair"
+  option <- liftIO getLine
   case option of
       "1" -> do
-        menuInicial -- Menu Inicial do Jogo da Velha
-        menu 
-      "2" -> do 
-        mainMenu -- Menu Inicial do Sudoku
-        menu 
-      "3" -> putStrLn "..." 
-      _   -> do
-          putStrLn "Opção inválida. Tente novamente."
+        liftIO menuInicial
+        callCC $ \exit -> do
+          menu
+      "2" -> do
+        liftIO mainMenu
+        callCC $ \exit -> do
+          menu
+      "3" -> liftIO $ putStrLn "..."
+      _ -> do
+          liftIO $ putStrLn "Opção inválida. Tente novamente."
+          menu
 
 main :: IO ()
 main = do
   putStrLn "-- Fliperama --"
-  menu
+  runContT menu return
