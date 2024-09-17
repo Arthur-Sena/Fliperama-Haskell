@@ -1,9 +1,12 @@
 module Sudoku.Sudoku where
 
 import Sudoku.Validacao (validarJogada, validarEntradaSudoku)
-import Tipos 
+import Tipos
 import System.Random (randomRIO)
 import Control.Monad.Trans.State (State, StateT, get, put)
+import Data.Time.Clock (getCurrentTime, diffUTCTime, UTCTime, NominalDiffTime)
+import Control.Monad.IO.Class (liftIO)
+import Tipos (Jogada, Coord)
 
 geradorTabuleiroVazio :: Sudoku
 geradorTabuleiroVazio = replicate 9 (replicate 9 0)
@@ -21,26 +24,28 @@ sudokuGenerator qntCasasPreenchidas = do
             then limpaPosicao tabuleiro n
             else limpaPosicao (copySudokuEspacoSemValor tabuleiro linha col 0) (n - 1)
     copySudokuEspacoSemValor tabuleiro linha col val =
-        take linha tabuleiro ++ 
-        [take col (tabuleiro !! linha) 
-        ++ [val] 
+        take linha tabuleiro ++
+        [take col (tabuleiro !! linha)
+        ++ [val]
         ++ drop (col + 1) (tabuleiro !! linha)
         ] ++ drop (linha + 1) tabuleiro
 
 salvarJogada :: Sudoku -> Jogada -> Sudoku
 salvarJogada tabuleiro (line, col, val) =
-    take line tabuleiro 
+    take line tabuleiro
     ++ [
-        take col (tabuleiro !! line) 
-        ++ [val] 
+        take col (tabuleiro !! line)
+        ++ [val]
         ++ drop (col + 1) (tabuleiro !! line)
         ] ++ drop (line + 1) tabuleiro
 
-showTabuleiro :: Sudoku -> IO ()
-showTabuleiro tabuleiro = do
-    putStrLn "    1 2 3 | 4 5 6 | 7 8 9"
-    putStrLn "   -----------------------"
-    mapM_ putStrLn $ formatarSudoku 1 tabuleiro
+showTabuleiro :: StateT GameState IO ()
+showTabuleiro = do
+    GameState tabuleiro _ _ _ <- get  -- Pega o tabuleiro atual do estado
+    liftIO $ do
+        putStrLn "    1 2 3 | 4 5 6 | 7 8 9"
+        putStrLn "   -----------------------"
+        mapM_ putStrLn $ formatarSudoku 1 tabuleiro
   where
     formatarSudoku _ [] = []
     formatarSudoku n (x:xs) =
@@ -70,10 +75,10 @@ preencheTabuleiro tabuleiro = preencheTabuleiro' tabuleiro (0, 0)
 preenchendoTabuleiro :: Sudoku -> Maybe SudokuBoard
 preenchendoTabuleiro sudoku = preenche' sudoku (0, 0)
   where
-    preenche' b (9, _) = Just (SudokuBoard b) -- Se chegar na última linha, retorna tabuleiro
-    preenche' b (line, 9) = preenche' b (line + 1, 0) -- Avança pra próxima linha
+    preenche' b (9, _) = Just (SudokuBoard b) 
+    preenche' b (line, 9) = preenche' b (line + 1, 0) 
     preenche' b (line, col)
-        | b !! line !! col /= 0 = preenche' b (line, col + 1) -- Se a célula já estiver preenchida, avança
+        | b !! line !! col /= 0 = preenche' b (line, col + 1) 
         | otherwise = foldr tryMove Nothing [1..9]
       where
         tryMove n acc
@@ -82,29 +87,56 @@ preenchendoTabuleiro sudoku = preenche' sudoku (0, 0)
                 Nothing -> acc
             | otherwise = acc
 
-solucionarSudoku :: Sudoku -> IO (Maybe Sudoku)
-solucionarSudoku sudoku = do
-    case preenchendoTabuleiro sudoku of
-        Just (SudokuBoard tabuleiro) -> return (Just tabuleiro)
+solucionarSudoku :: StateT GameState IO (Maybe Sudoku)
+solucionarSudoku = do
+    GameState tabuleiro _ _ _ <- get
+    case preenchendoTabuleiro tabuleiro of
+        Just (SudokuBoard tabuleiroSolucionado) -> return (Just tabuleiroSolucionado)
         Nothing -> return Nothing
 
-posicoesVazias :: Sudoku -> [(Int, Int)]
+
+posicoesVazias :: Sudoku -> [Coord]
 posicoesVazias tab = [(x, y) | x <- [0..8], y <- [0..8], tab !! x !! y == 0]
 
-findJogadaValida :: Sudoku -> Maybe (Int, Int, Int)
-findJogadaValida sudoku = 
+findJogadaValida :: Sudoku -> Maybe Jogada
+findJogadaValida sudoku =
     let vazias = posicoesVazias sudoku
         numeros = [1..9]
         jogadasValidas = [(x + 1, y + 1, v) | (x, y) <- vazias, v <- numeros, validarEntradaSudoku sudoku (x + 1, y + 1, v)]
     in case jogadasValidas of
-        []       -> Nothing      
-        (j:_)    -> Just j       
+        []       -> Nothing
+        (j:_)    -> Just j
 
-sugerirJogada :: Sudoku -> Maybe (Int, Int, Int)
-sugerirJogada sudoku = findJogadaValida sudoku 
+sugerirJogada :: Sudoku -> Maybe Jogada
+sugerirJogada = findJogadaValida --eta reduce
 
 sugerirJogadaState :: StateT GameState IO ()
 sugerirJogadaState = do
-    GameState sudoku _ <- get
-    let novaSugestao = sugerirJogada sudoku
-    put (GameState sudoku novaSugestao)
+    GameState sudokuAtual _ tempoRestante tempoInicial <- get
+    let novaSugestao = sugerirJogada sudokuAtual
+    put (GameState sudokuAtual novaSugestao tempoRestante tempoInicial)
+
+atualizarTempo :: StateT GameState IO ()
+atualizarTempo = do
+    now <- liftIO getCurrentTime
+    GameState sudokuAtual sugestao  tempoRestante inicio <- get
+    let tempoDecorriso = diffUTCTime now inicio
+    let novoTempo = tempoRestante - tempoDecorriso
+    put (GameState sudokuAtual sugestao novoTempo now)
+
+verificarTempoLimite :: StateT GameState IO Bool
+verificarTempoLimite = do
+    GameState _ _ tempoRestante _ <- get
+    return (tempoRestante <= 0)
+
+desfazerJogada :: Sudoku -> Historico -> Sudoku
+desfazerJogada tabuleiro (Historico []) = tabuleiro
+desfazerJogada tabuleiro (Historico ((x, y, _):hs)) =
+    let novoTabuleiro = salvarJogada tabuleiro (x, y, 0)
+    in novoTabuleiro
+
+adicionarJogadaHistorico :: Jogada -> Historico -> Historico
+adicionarJogadaHistorico jogada (Historico hs) = Historico (jogada : hs)
+
+unHistorico :: Historico -> [Jogada]
+unHistorico (Historico hs) = hs

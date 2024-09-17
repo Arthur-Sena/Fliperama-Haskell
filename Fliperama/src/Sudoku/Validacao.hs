@@ -1,6 +1,4 @@
 module Sudoku.Validacao where
-import System.Random (randomRIO)
-
 import Tipos 
 
 {-- *****************************************************
@@ -16,25 +14,6 @@ import Tipos
     |     - Não pode ter o valor da jogada na coluna    |
     |     - Não pode ter o valor da jogada no quadrante |
  -- *****************************************************--}
-
--- validEntrada :: Sudoku -> Jogada -> IO Bool
--- validEntrada tabuleiro (line, col, num)
---     | num < 1 || num > 9 = do
---         putStrLn "Número inválido. Deve ser entre 1 e 9."
---         putStrLn " "
---         return False
---     | tabuleiro !! (line - 1) !! (col - 1) /= 0 = do
---         putStrLn "Posição já preenchida."
---         putStrLn " "
---         return False
---     | not (validarJogada tabuleiro num (line - 1, col - 1)) = do
---         putStrLn "Jogada errada segundo as regras do Sudoku."
---         putStrLn " "
---         return False
---     | otherwise = return True
-
-{--Tava com dificulades pra testar funções inpuras, então separei em 2 funções, uma que faz a validação
-e outra que retorna o erro--}
 
 validEntrada :: Sudoku -> Jogada -> IO Bool
 validEntrada tabuleiro jogada = do
@@ -70,4 +49,4 @@ validarJogada tabuleiro num (linha, col) =
     boxColunas = [boxInicio col .. boxInicio col + 2]
 
 validTabuleiroCompleto :: Sudoku -> Bool
-validTabuleiroCompleto sudoku = all (/= 0) (concat sudoku)
+validTabuleiroCompleto = and . concatMap (fmap (/= 0))
